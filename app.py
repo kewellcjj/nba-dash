@@ -12,7 +12,7 @@ from bs4 import BeautifulSoup
 import pandas as pd
 
 from nba_api.stats.static import players
-from nba_api.stats.endpoints import playergamelog, commonallplayers, playercareerstats
+from nba_api.stats.endpoints import playergamelog, commonallplayers, playercareerstats, shotchartdetail
 
 # external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 
@@ -96,6 +96,12 @@ app.layout = html.Div([
         className="row flex-display",
     ),
     
+    html.Div(
+                [dcc.Graph(id='graph-shot')],
+                # id="right-column",
+                className='pretty_container',
+            ),
+    
     
 ],
 id="mainContainer",
@@ -103,11 +109,12 @@ style={"display": "flex", "flex-direction": "column"},
 )
 
 @app.callback(
-    # [
+    [
         Output('graph-gamelog', 'figure'), 
+        Output('graph-shot', 'figure'), 
         # Output('career-stat', 'data'), 
         # Output('player-pic', 'src'),
-    # ],   
+    ],   
     [
         Input('name-search', 'value'),
         Input('stat-pick', 'value'),
@@ -148,9 +155,50 @@ def update_gamelog_figure(player_id=[], stat='PTS'):
         paper_bgcolor="#F9F9F9",
     )
     
+    
+
+    fig1 = go.Figure()
+    draw_plotly_court(fig1)
+    
+    if player_id != []:
+        shot = shotchartdetail.ShotChartDetail(
+            team_id='0', player_id=player_id[0], context_measure_simple='FGA'
+        ).get_data_frames()[0]
+
+        shot = shot[shot.LOC_Y<=417]
+    else:
+        shot = pd.DataFrame.from_dict(
+            {
+                'EVENT_TYPE': ['Made Shot', 'Missed Shot'], 
+                'LOC_X': [1000, 1000],
+                'LOC_Y': [1000, 1000],
+            }
+        )
+        
+    fig1.add_trace(go.Scatter(
+        x=shot.loc[shot['EVENT_TYPE']=='Made Shot', 'LOC_X'], 
+        y=shot.loc[shot['EVENT_TYPE']=='Made Shot', 'LOC_Y'], 
+        mode='markers',
+        marker=dict(
+            opacity=.2,
+            color='green'
+        ),
+        name = 'Made Shot'
+    ))
+    fig1.add_trace(go.Scatter(
+        x=shot.loc[shot['EVENT_TYPE']=='Missed Shot', 'LOC_X'], 
+        y=shot.loc[shot['EVENT_TYPE']=='Missed Shot', 'LOC_Y'], 
+        mode='markers',
+        marker=dict(
+            opacity=.2,
+            color='red'
+        ),
+        name = 'Missed Shot'
+    ))
+
     # src = f'https://cdn.nba.com/headshots/nba/latest/1040x760/{player_id}.png'
 
-    return fig
+    return fig, fig1
     # , cs.to_dict('records'), src
 
 def career_stat(player_id):
@@ -179,6 +227,168 @@ def career_stat(player_id):
     print(cs[['SEASON', 'TEAM', 'GP', 'GS', 'MIN', 'FG', 'FG%', '3PT',
            '3PT%', 'FT', 'FT%', 'OREB', 'DREB', 'REB', 'AST', 'STL',
            'BLK', 'TO', 'PF', 'PTS']])
+def draw_plotly_court(fig, fig_width=600, margins=10):
+
+    import numpy as np
+
+    # From: https://community.plot.ly/t/arc-shape-with-path/7205/5
+    def ellipse_arc(x_center=0.0, y_center=0.0, a=10.5, b=10.5, start_angle=0.0, end_angle=2 * np.pi, N=200, closed=False):
+        t = np.linspace(start_angle, end_angle, N)
+        x = x_center + a * np.cos(t)
+        y = y_center + b * np.sin(t)
+        path = f'M {x[0]}, {y[0]}'
+        for k in range(1, len(t)):
+            path += f'L{x[k]}, {y[k]}'
+        if closed:
+            path += ' Z'
+        return path
+
+    fig_height = fig_width * (470 + 2 * margins) / (500 + 2 * margins)
+    fig.update_layout(width=fig_width, height=fig_height)
+
+    # Set axes ranges
+    fig.update_xaxes(range=[-250 - margins, 250 + margins])
+    fig.update_yaxes(range=[-52.5 - margins, 417.5 + margins])
+
+    threept_break_y = 89.47765084
+    three_line_col = "#777777"
+    main_line_col = "#777777"
+
+    fig.update_layout(
+        # Line Horizontal
+        margin=dict(l=20, r=20, t=20, b=20),
+        paper_bgcolor="white",
+        plot_bgcolor="white",
+        yaxis=dict(
+            scaleanchor="x",
+            scaleratio=1,
+            showgrid=False,
+            zeroline=False,
+            showline=False,
+            ticks='',
+            showticklabels=False,
+            fixedrange=True,
+        ),
+        xaxis=dict(
+            showgrid=False,
+            zeroline=False,
+            showline=False,
+            ticks='',
+            showticklabels=False,
+            fixedrange=True,
+        ),
+        shapes=[
+            dict(
+                type="rect", x0=-250, y0=-52.5, x1=250, y1=417.5,
+                line=dict(color=main_line_col, width=1),
+                # fillcolor='#333333',
+                layer='below'
+            ),
+            dict(
+                type="rect", x0=-80, y0=-52.5, x1=80, y1=137.5,
+                line=dict(color=main_line_col, width=1),
+                # fillcolor='#333333',
+                layer='below'
+            ),
+            dict(
+                type="rect", x0=-60, y0=-52.5, x1=60, y1=137.5,
+                line=dict(color=main_line_col, width=1),
+                # fillcolor='#333333',
+                layer='below'
+            ),
+            dict(
+                type="circle", x0=-60, y0=77.5, x1=60, y1=197.5, xref="x", yref="y",
+                line=dict(color=main_line_col, width=1),
+                # fillcolor='#dddddd',
+                layer='below'
+            ),
+            dict(
+                type="line", x0=-60, y0=137.5, x1=60, y1=137.5,
+                line=dict(color=main_line_col, width=1),
+                layer='below'
+            ),
+
+            dict(
+                type="rect", x0=-2, y0=-7.25, x1=2, y1=-12.5,
+                line=dict(color="#ec7607", width=1),
+                fillcolor='#ec7607',
+            ),
+            dict(
+                type="circle", x0=-7.5, y0=-7.5, x1=7.5, y1=7.5, xref="x", yref="y",
+                line=dict(color="#ec7607", width=1),
+            ),
+            dict(
+                type="line", x0=-30, y0=-12.5, x1=30, y1=-12.5,
+                line=dict(color="#ec7607", width=1),
+            ),
+
+            dict(type="path",
+                 path=ellipse_arc(a=40, b=40, start_angle=0, end_angle=np.pi),
+                 line=dict(color=main_line_col, width=1), layer='below'),
+            dict(type="path",
+                 path=ellipse_arc(a=237.5, b=237.5, start_angle=0.386283101, end_angle=np.pi - 0.386283101),
+                 line=dict(color=main_line_col, width=1), layer='below'),
+            dict(
+                type="line", x0=-220, y0=-52.5, x1=-220, y1=threept_break_y,
+                line=dict(color=three_line_col, width=1), layer='below'
+            ),
+            dict(
+                type="line", x0=-220, y0=-52.5, x1=-220, y1=threept_break_y,
+                line=dict(color=three_line_col, width=1), layer='below'
+            ),
+            dict(
+                type="line", x0=220, y0=-52.5, x1=220, y1=threept_break_y,
+                line=dict(color=three_line_col, width=1), layer='below'
+            ),
+
+            dict(
+                type="line", x0=-250, y0=227.5, x1=-220, y1=227.5,
+                line=dict(color=main_line_col, width=1), layer='below'
+            ),
+            dict(
+                type="line", x0=250, y0=227.5, x1=220, y1=227.5,
+                line=dict(color=main_line_col, width=1), layer='below'
+            ),
+            dict(
+                type="line", x0=-90, y0=17.5, x1=-80, y1=17.5,
+                line=dict(color=main_line_col, width=1), layer='below'
+            ),
+            dict(
+                type="line", x0=-90, y0=27.5, x1=-80, y1=27.5,
+                line=dict(color=main_line_col, width=1), layer='below'
+            ),
+            dict(
+                type="line", x0=-90, y0=57.5, x1=-80, y1=57.5,
+                line=dict(color=main_line_col, width=1), layer='below'
+            ),
+            dict(
+                type="line", x0=-90, y0=87.5, x1=-80, y1=87.5,
+                line=dict(color=main_line_col, width=1), layer='below'
+            ),
+            dict(
+                type="line", x0=90, y0=17.5, x1=80, y1=17.5,
+                line=dict(color=main_line_col, width=1), layer='below'
+            ),
+            dict(
+                type="line", x0=90, y0=27.5, x1=80, y1=27.5,
+                line=dict(color=main_line_col, width=1), layer='below'
+            ),
+            dict(
+                type="line", x0=90, y0=57.5, x1=80, y1=57.5,
+                line=dict(color=main_line_col, width=1), layer='below'
+            ),
+            dict(
+                type="line", x0=90, y0=87.5, x1=80, y1=87.5,
+                line=dict(color=main_line_col, width=1), layer='below'
+            ),
+
+            dict(type="path",
+                 path=ellipse_arc(y_center=417.5, a=60, b=60, start_angle=-0, end_angle=-np.pi),
+                 line=dict(color=main_line_col, width=1), layer='below'),
+
+        ]
+    )
+    return True
 
 if __name__ == '__main__':
     app.run_server(debug=True)
