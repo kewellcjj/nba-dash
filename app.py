@@ -7,17 +7,26 @@ import plotly.graph_objects as go
 
 import requests
 from bs4 import BeautifulSoup
-
+from datetime import datetime
 
 import pandas as pd
 
 from nba_api.stats.static import players
 from nba_api.stats.endpoints import playergamelog, commonallplayers, playercareerstats, shotchartdetail
 
+from flask_caching import Cache
+
+
 # external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 
 app = dash.Dash(__name__, meta_tags=[{"name": "viewport", "content": "width=device-width"}])
 
+cache = Cache(app.server, config={
+    'CACHE_TYPE': 'filesystem',
+    'CACHE_DIR': 'cache-directory'
+})
+
+TIMEOUT = 60
 # colors = {
 #     'background': '#111111',
 #     'text': '#7FDBFF'
@@ -41,7 +50,9 @@ app = dash.Dash(__name__, meta_tags=[{"name": "viewport", "content": "width=devi
 
 all_players = commonallplayers.CommonAllPlayers().get_data_frames()[0]
 active_players = all_players[all_players.TO_YEAR == all_players.TO_YEAR.max()]
+cur_year = datetime.today().year
 
+print(type(active_players.FROM_YEAR.min()))
 app.layout = html.Div([
     html.Div(id="output-clientside"),
     html.H1(
@@ -60,29 +71,66 @@ app.layout = html.Div([
         [
             html.Div(
                 [
+            
                     dcc.Dropdown(
                         id='name-search',
                         options=[{'label': name,'value': str(id)} for name, id in zip(active_players.DISPLAY_FIRST_LAST, active_players.PERSON_ID)],
-                        value=[],
+                        value=None,
                         searchable=True,
                         placeholder="Select a player",
                         className="dcc_control",
-                        multi=True
+                        multi=False
                     ),
-
+                    html.P(
+                        "Filter by year:",
+                        className="control_label",
+                    ),
+                    dcc.RangeSlider(
+                        id="year-slider",
+                        min=2003,
+                        max=cur_year,
+                        value=[2003, cur_year],
+                        step = 1,
+                        marks={i: str(i) for i in range(2003, cur_year+1) 
+                                if (i%5==0 and i-2003>=2 and cur_year-i>=2) or i==2003 or i==cur_year},
+                        #     2003: '2003',
+                        #     2010: '2010',
+                        #     2015: '2015',
+                        #     cur_year: str(cur_year),
+                        # },
+                        className="dcc_control",
+                    ),
+                    html.P("Filter by quarters:", className="control_label"),
                     dcc.RadioItems(
-                        id='stat-pick',
+                        id='quarter-radio',
                         options=[
-                            {'label': 'Points', 'value': 'PTS'},
-                            {'label': 'Rebounds', 'value': 'REB'},
-                            {'label': 'Assists', 'value': 'AST'},
-                            {'label': 'Steals', 'value': 'STL'},
-                            {'label': 'Blocks', 'value': 'BLK'},
+                            {'label': 'All', 'value': 0},
+                            {'label': '1st Qtr', 'value': 1},
+                            {'label': '2nd Qtr', 'value': 2},
+                            {'label': '3rd Qtr', 'value': 3},
+                            {'label': '4th Qtr', 'value': 4},
+                            {'label': 'OT', 'value': 5},
                         ],
-                        value='PTS',
+                        value=0,
                         labelStyle={'display': 'inline-block'},
                         className="dcc_control",
-                    ),    
+                    ),
+                    html.P(
+                        "Filter by minutes left in the quarter:",
+                        className="control_label",
+                    ),
+                    dcc.Slider(
+                        id="time-slider",
+                        min=0,
+                        max=12,
+                        value=12,
+                        step = .1,
+                        marks={
+                            i: str(i) for i in range(0, 13, 3)
+                        },
+                        className="dcc_control",
+                    ),
+                    html.Img(id='player-img', style={'width':'50%'}),
                 ],
                 className = "pretty_container four columns"
             ),
@@ -97,10 +145,20 @@ app.layout = html.Div([
     ),
     
     html.Div(
-                [dcc.Graph(id='graph-shot')],
+        [
+            html.Div(
+                [dcc.Graph(id='graph-fga')],
                 # id="right-column",
-                className='pretty_container',
+                className='pretty_container six columns',
             ),
+            html.Div(
+                [dcc.Graph(id='graph-fgp')],
+                # id="right-column",
+                className='pretty_container six columns',
+            ),
+        ],
+        className="row flex-display",
+    ), 
     
     
 ],
@@ -111,96 +169,229 @@ style={"display": "flex", "flex-direction": "column"},
 @app.callback(
     [
         Output('graph-gamelog', 'figure'), 
-        Output('graph-shot', 'figure'), 
+        Output('graph-fga', 'figure'), 
+        Output('graph-fgp', 'figure'), 
         # Output('career-stat', 'data'), 
-        # Output('player-pic', 'src'),
+        Output('player-img', 'src'),
     ],   
     [
         Input('name-search', 'value'),
-        Input('stat-pick', 'value'),
+        Input('quarter-radio', 'value'),
+        Input('time-slider', 'value'),
+        Input('year-slider', 'value'),
+        # Input('stat-pick', 'value'),
     ]
 )
-def update_gamelog_figure(player_id=[], stat='PTS'):
+def update_gamelog_figure(player_id=None, quarter='0', time=12, year=[2003, cur_year]):
+    # stat = 'PTS'
+    src = None
     fig = go.Figure()
-    
-    for p in player_id:
-        # print(playergamelog.PlayerGameLog(player_id=p).get_data_frames()[0])
-        df = playergamelog.PlayerGameLog(player_id=p).get_data_frames()[0][['GAME_DATE', stat, 'MATCHUP', 'WL', 'FG_PCT']]
-        df = df.rename(columns={'WL': 'Win/Lose'})
-        df['size'] = df['FG_PCT'] * 10
-        df['date'] = pd.to_datetime(df['GAME_DATE'])
-        df = df.sort_values(by=['date'])
-        df['stat'] = stat
-    #     df['MATCHUP'] = df['MATCHUP'].map(lambda x: ' '.join(x.replace('.', '').split(' ')[1:]))
-    #     df['type'] = stat
-        # print(df)
-    #     df_ewa = df.copy()
-        df['avg'] = df[stat].ewm(com=0.9).mean()
-#     df_ewa['type'] = 'EWA '+ stat
-#     df = pd.concat([df, df_ewa])
+    fig1 = go.Figure()
+    draw_plotly_court(fig1)
+    fig2 = go.Figure()
+    draw_plotly_court(fig2)
 
-        player_name = active_players.loc[active_players.PERSON_ID==int(p), 'DISPLAY_FIRST_LAST'].values[0]
-        fig.add_trace(go.Scatter(x=df['date'], y=df[stat], customdata = df[['MATCHUP','Win/Lose','stat','avg']], name=player_name))
+    shot = shot_detail(player_id)
 
-    fig.update_traces(
-        mode="lines+markers",
-        marker = dict(
-            size = 10
-        ),
-        hovertemplate="<b>%{customdata[0]} (%{customdata[1]})</b><br><br>%{customdata[2]}: %{y}",
-    )
+    if quarter==0:
+        quarter_name = 'each quarter'
+    elif 1<=quarter<= 4:
+        shot = shot[shot['PERIOD']==quarter]
+        if quarter==1:
+            quarter_name = f'1st quarter'
+        elif quarter==2:
+            quarter_name = f'2nd quarter'
+        elif quarter==3:
+            quarter_name = f'3rd quarter'
+        else:
+            quarter_name = f'4th quarter'
+    else:
+        shot = shot[shot['PERIOD']>=quarter]
+        quater_name = 'overtime'
+
+    print(time)
+    if time==12:
+        pass
+    else:
+        shot = shot[shot['min_left'] <= time]
+
+    if year==[2003, cur_year]:
+        pass
+    else:
+        shot = shot[(shot['year'] <= year[1]) & (shot['year'] >= year[0])]
+
+    if player_id:
+        src = f'https://cdn.nba.com/headshots/nba/latest/1040x760/{player_id}.png'
+        print(player_id)
+        player_name = active_players.loc[active_players.PERSON_ID==int(player_id), 'DISPLAY_FIRST_LAST'].values[0]
+        fig.add_trace(go.Histogram(
+            x=shot.loc[shot['SHOT_ATTEMPTED_FLAG']==1, 'SHOT_DISTANCE'],
+            # customdata = df[['MATCHUP','Win/Lose','stat','avg']],
+            xbins=dict(
+                      start=0,
+                      end=100,
+                      size=1),
+            name='Shot Attempted',
+            ))
+        fig.add_trace(go.Histogram(
+            x=shot.loc[shot['SHOT_MADE_FLAG']==1, 'SHOT_DISTANCE'],
+            xbins=dict(
+                      start=0,
+                      end=100,
+                      size=1),
+            # customdata = df[['MATCHUP','Win/Lose','stat','avg']], 
+            name='Shot Made',
+            ))
+        
+        # Overlay both histograms
+        
+        fig.update_layout(barmode='overlay', 
+                title=f'Shot selection from {year[0]} to {year[1]} during last {time} minutes of {quarter_name}'
+            )
+        # Reduce opacity to see both histograms
+        fig.update_traces(opacity=0.6)
+    # fig.update_traces(
+    #     mode="lines+markers",
+    #     marker = dict(
+    #         size = 10
+    #     ),
+    #     hovertemplate="<b>%{customdata[0]} (%{customdata[1]})</b><br><br>%{customdata[2]}: %{y}",
+    # )
     fig.update_layout(
         hovermode="closest",
         plot_bgcolor="#F9F9F9",
         paper_bgcolor="#F9F9F9",
     )
-    
-    
 
-    fig1 = go.Figure()
-    draw_plotly_court(fig1)
     
-    if player_id != []:
+    
+    # print(shot.SHOT_MADE_FLAG.value_counts())
+    fig1.add_trace(go.Scatter(
+        x=shot['LOC_X'], 
+        y=shot['LOC_Y'], 
+        mode='markers',
+        marker=dict(
+            opacity=.3,
+            size = 10,
+            color=shot['SHOT_MADE_FLAG'],
+            colorscale=[[0, 'red'], [1, 'green']]
+            # symbol='hexagon',
+        ),
+
+        # name = 'Made Shot'
+    ))
+    # fig1.add_trace(go.Scatter(
+    #     x=shot.loc[shot['EVENT_TYPE']=='Missed Shot', 'LOC_X'], 
+    #     y=shot.loc[shot['EVENT_TYPE']=='Missed Shot', 'LOC_Y'], 
+    #     mode='markers',
+    #     marker=dict(
+    #         opacity=.2,
+    #         color='red'
+    #     ),
+    #     name = 'Missed Shot'
+    # ))
+
+    # fig1.add_trace(go.Histogram2dContour(
+    #     x=shot['LOC_X'], 
+    #     y=shot['LOC_Y'],
+    #     # histnorm = 'percent',
+    #     opacity = .7,
+    #     colorscale = 'hot',
+    #     reversescale = True,
+    # ))
+
+    # margins = 10
+    # fig1.update_xaxes(range=[-1250, 1250])
+    # fig1.update_yaxes(range=[-52.5, 417.5])
+
+    ss = shot.groupby(['x', 'y'], as_index=False).agg({'SHOT_ATTEMPTED_FLAG': 'sum', 'SHOT_MADE_FLAG': 'sum'})
+
+    max_freq = 0.002
+    # freq_by_hex = np.array([min(max_freq, i) for i in league_hexbin_stats['freq_by_hex']])
+    # colorscale = 'YlOrRd'
+    marker_cmin = 10
+    marker_cmax = 200
+    ticktexts = [str(marker_cmin), "", str(marker_cmax)]
+    fig2.add_trace(go.Scatter(
+        # x=shot['x'], 
+        # y=shot['y'], 
+        x = ss['x'],
+        y = ss['y'],
+        mode='markers',
+        marker=dict(
+            opacity=.2,
+            # color='red',
+            color = ss['SHOT_ATTEMPTED_FLAG'],
+            size = 10,
+            colorscale = 'YlOrRd',
+            reversescale = True,
+            colorbar=dict(
+            thickness=15,
+            x=0.84,
+            y=0.87,
+            yanchor='middle',
+            len=0.2,
+            title=dict(
+                text="<B>Accuracy</B>",
+                font=dict(
+                    size=11,
+                    color='#4d4d4d'
+                ),
+            ),
+            tickvals=[marker_cmin, (marker_cmin + marker_cmax) / 2, marker_cmax],
+            ticktext=ticktexts,
+            tickfont=dict(
+                size=11,
+                color='#4d4d4d'
+            )
+        ),
+            
+            cmin=marker_cmin, cmax=marker_cmax,
+        line=dict(width=1, color='#333333'),
+        ),
+        name = 'Shot'
+    ))
+
+
+    # src = f'https://cdn.nba.com/headshots/nba/latest/1040x760/{player_id}.png'
+
+    return fig, fig1, fig2, src
+    # , cs.to_dict('records'), src
+
+@cache.memoize(timeout=TIMEOUT)
+def shot_detail(player_id):
+    if player_id:
         shot = shotchartdetail.ShotChartDetail(
-            team_id='0', player_id=player_id[0], context_measure_simple='FGA'
+            team_id='0', player_id=player_id, context_measure_simple='FGA'
         ).get_data_frames()[0]
 
         shot = shot[shot.LOC_Y<=417]
+
+        shot['x'] = (shot['LOC_X'] + 250 + 5) // 10 * 10 -250
+        shot['y'] = (shot['LOC_Y'] + 52.5 + 5) // 10 * 10 - 52.5
+
+        shot['min_left'] = shot['SECONDS_REMAINING']/60 + shot['MINUTES_REMAINING']
+        shot['year'] = shot['GAME_DATE'].map(lambda x: int(x[:4]))
     else:
         shot = pd.DataFrame.from_dict(
             {
                 'EVENT_TYPE': ['Made Shot', 'Missed Shot'], 
                 'LOC_X': [1000, 1000],
                 'LOC_Y': [1000, 1000],
+                'SHOT_ATTEMPTED_FLAG': [0, 0],
+                'SHOT_MADE_FLAG': [0, 0],
+                'x': [0, 0],
+                'y': [0, 0],
+                'min_left': [0, 0],
+                'year': [0, 0],
             }
         )
-        
-    fig1.add_trace(go.Scatter(
-        x=shot.loc[shot['EVENT_TYPE']=='Made Shot', 'LOC_X'], 
-        y=shot.loc[shot['EVENT_TYPE']=='Made Shot', 'LOC_Y'], 
-        mode='markers',
-        marker=dict(
-            opacity=.2,
-            color='green'
-        ),
-        name = 'Made Shot'
-    ))
-    fig1.add_trace(go.Scatter(
-        x=shot.loc[shot['EVENT_TYPE']=='Missed Shot', 'LOC_X'], 
-        y=shot.loc[shot['EVENT_TYPE']=='Missed Shot', 'LOC_Y'], 
-        mode='markers',
-        marker=dict(
-            opacity=.2,
-            color='red'
-        ),
-        name = 'Missed Shot'
-    ))
+    
+    
 
-    # src = f'https://cdn.nba.com/headshots/nba/latest/1040x760/{player_id}.png'
+    return shot 
 
-    return fig, fig1
-    # , cs.to_dict('records'), src
-
+@cache.memoize(timeout=TIMEOUT)
 def career_stat(player_id):
     career = playercareerstats.PlayerCareerStats(player_id)
     career.get_data_frames()[0]
@@ -224,10 +415,9 @@ def career_stat(player_id):
         'TEAM_ABBREVIATION': 'TEAM'
     })
     
-    print(cs[['SEASON', 'TEAM', 'GP', 'GS', 'MIN', 'FG', 'FG%', '3PT',
-           '3PT%', 'FT', 'FT%', 'OREB', 'DREB', 'REB', 'AST', 'STL',
-           'BLK', 'TO', 'PF', 'PTS']])
-def draw_plotly_court(fig, fig_width=600, margins=10):
+    return cs
+
+def draw_plotly_court(fig, fig_width=800, margins=10):
 
     import numpy as np
 
@@ -389,6 +579,17 @@ def draw_plotly_court(fig, fig_width=600, margins=10):
         ]
     )
     return True
+
+def gamelog(player_id):
+    df = playergamelog.PlayerGameLog(player_id=player_id).get_data_frames()[0][['GAME_DATE', stat, 'MATCHUP', 'WL', 'FG_PCT']]
+    df = df.rename(columns={'WL': 'Win/Lose'})
+    df['size'] = df['FG_PCT'] * 10
+    df['date'] = pd.to_datetime(df['GAME_DATE'])
+    df = df.sort_values(by=['date'])
+    df['stat'] = stat
+    df['avg'] = df[stat].ewm(com=0.9).mean()
+
+    return df
 
 if __name__ == '__main__':
     app.run_server(debug=True)
