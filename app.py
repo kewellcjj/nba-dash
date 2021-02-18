@@ -34,12 +34,12 @@ cache = Cache(app.server, config={
 
 TIMEOUT = 60
 
-# all_players = commonallplayers.CommonAllPlayers().get_data_frames()[0]
+all_players = commonallplayers.CommonAllPlayers().get_data_frames()[0]
 active_players = all_players[all_players.TO_YEAR == all_players.TO_YEAR.max()]
 cur_year = datetime.today().year
 
 app.layout = html.Div([
-    html.Div(id="output-clientside"),
+    # html.Div(id="output-clientside"),
     html.H1(
         children='Active NBA Player Shot Selection',
         style={
@@ -110,6 +110,33 @@ app.layout = html.Div([
                         },
                         className="dcc_control",
                     ),
+                    html.P(
+                        "Filter by shot zones:",
+                        className="control_label",
+                    ),
+                    dcc.Dropdown(
+                        id='zone-basic',
+                        options=[
+                                {'label': name,'value': name} for name in [
+                                    'Restricted Area',
+                                    'In The Paint (Non-RA)',    
+                                    'Mid-Range',
+                                    'Left Corner 3',
+                                    'Right Corner 3',
+                                    'Above the Break 3',
+                                    ]
+                            ],
+                        value=[
+                                'Restricted Area',
+                                'In The Paint (Non-RA)',    
+                                'Mid-Range',
+                                'Left Corner 3',
+                                'Right Corner 3',
+                                'Above the Break 3',
+                            ],
+                        className="dcc_control",
+                        multi=True,
+                    ),
                     html.Img(id='player-img', style={'width':'50%'}),
                 ],
                 className = "pretty_container four columns"
@@ -171,10 +198,10 @@ style={"display": "flex", "flex-direction": "column"},
         Input('quarter-radio', 'value'),
         Input('time-slider', 'value'),
         Input('year-slider', 'value'),
-        # Input('stat-pick', 'value'),
+        Input('zone-basic', 'value'),
     ]
 )
-def update_gamelog_figure(player_id=None, quarter='0', time=12, year=[2003, cur_year]):
+def update_gamelog_figure(player_id=None, quarter='0', time=12, year=[2003, cur_year], zone_basic=None):
     # stat = 'PTS'
     src = None
     fig = go.Figure()
@@ -211,6 +238,8 @@ def update_gamelog_figure(player_id=None, quarter='0', time=12, year=[2003, cur_
         pass
     else:
         shot = shot[(shot['year'] <= year[1]) & (shot['year'] >= year[0])]
+
+    shot = shot[shot['SHOT_ZONE_BASIC'].isin(zone_basic)]
 
     if player_id:
         src = f'https://cdn.nba.com/headshots/nba/latest/1040x760/{player_id}.png'
@@ -249,19 +278,24 @@ def update_gamelog_figure(player_id=None, quarter='0', time=12, year=[2003, cur_
         fig3.add_trace(go.Pie(
                 labels=shot_area['ACTION_TYPE'],
                 values=shot_area['SHOT_MADE_FLAG'],
-                name='Made Shot'),
+                text=100*shot_area['SHOT_MADE_FLAG']/shot_area['SHOT_ATTEMPTED_FLAG'],
+                name=''
+                ),
                 1, 1
             )
         fig3.add_trace(go.Pie(
                 labels=shot_area['ACTION_TYPE'],
                 values=shot_area['SHOT_ATTEMPTED_FLAG'],
-                name='SHOT ATTEMPT'),
+                text=100*shot_area['SHOT_MADE_FLAG']/shot_area['SHOT_ATTEMPTED_FLAG'],
+                name=''
+                ),
                 1, 2
             )
 
         fig3.update_traces(
-            hoverinfo='label+percent', 
+            hoverinfo='none', 
             textinfo='none',
+            hovertemplate="<b>%{label} (%{percent})</b><br><br>Count: %{value}<br>FG%: %{text:.1f}%",
             hole=.4
             )
         
@@ -422,6 +456,7 @@ def shot_detail(player_id):
                 'y': [0, 0],
                 'min_left': [0, 0],
                 'year': [0, 0],
+                'SHOT_ZONE_BASIC': ['', ''],
                 'SHOT_ZONE_AREA': ['', ''],
                 'ACTION_TYPE': ['', ''],
             }
