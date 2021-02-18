@@ -3,6 +3,8 @@ import pandas as pd
 from nba_api.stats.static import players
 from nba_api.stats.endpoints import playergamelog, commonallplayers, playercareerstats, shotchartdetail
 
+from utils.figure import hexagonify
+
 def data_filter_shot(shot, quarter, time, year, zone_basic):
     if quarter==0:
         pass
@@ -24,9 +26,7 @@ def get_shot_detail_data(player_id):
         ).get_data_frames()[0]
 
         shot = shot[shot.LOC_Y<=417]
-
-        shot['x'] = (shot['LOC_X'] + 250 + 5) // 10 * 10 -250
-        shot['y'] = (shot['LOC_Y'] + 52.5 + 5) // 10 * 10 - 52.5
+        shot = hexagonify(shot.copy())
 
         shot['min_left'] = shot['SECONDS_REMAINING']/60 + shot['MINUTES_REMAINING']
         shot['year'] = shot['GAME_DATE'].map(lambda x: int(x[:4]))

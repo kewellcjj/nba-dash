@@ -1,5 +1,38 @@
 import numpy as np
 
+COURT_LEFT = -250
+COURT_RIGHT = 250
+COURT_TOP = 417.5
+COURT_BOTTOM = -52.5
+
+def hexagonify(shot, h=10):
+    # h is preferred to divide COURT_RIGHT
+    r = 2*h/3**.5
+    shot['x'] = (shot['LOC_X'] - COURT_LEFT) // (2*h) * (2*h) + COURT_LEFT
+    shot['y0'] = (shot['LOC_Y'] - COURT_BOTTOM) // (1.5*r)
+    shot['y'] = shot['y0'] * (1.5*r) + COURT_BOTTOM
+
+    def pos(row):
+        res = None
+        m = float('inf')
+        if row.y0%2==0:
+            tmp = [(row.x,row.y), (row.x+h,row.y+1.5*r), (row.x+2*h,row.y)]
+        else:
+            tmp = [(row.x,row.y+1.5*r), (row.x+h,row.y), (row.x+2*h,row.y+1.5*r)]
+        
+        for i, j in tmp:
+            if (row.LOC_X-i)**2+(row.LOC_Y-j)**2 < m:
+                m = (row.LOC_X-i)**2+(row.LOC_Y-j)**2
+                res = (i, j)
+
+        row['x'], row['y'] = res
+        
+        return row
+
+    shot = shot.apply(pos, axis=1)
+
+    return shot
+
 def draw_plotly_court(fig, fig_width=800, margins=10):
     # From: https://community.plot.ly/t/arc-shape-with-path/7205/5
     def ellipse_arc(x_center=0.0, y_center=0.0, a=10.5, b=10.5, start_angle=0.0, end_angle=2 * np.pi, N=200, closed=False):
@@ -13,12 +46,12 @@ def draw_plotly_court(fig, fig_width=800, margins=10):
             path += ' Z'
         return path
 
-    fig_height = fig_width * (470 + 2 * margins) / (500 + 2 * margins)
+    fig_height = fig_width * ((COURT_TOP-COURT_BOTTOM) + 2 * margins) / ((COURT_RIGHT-COURT_LEFT) + 2 * margins)
     fig.update_layout(width=fig_width, height=fig_height)
 
     # Set axes ranges
-    fig.update_xaxes(range=[-250 - margins, 250 + margins])
-    fig.update_yaxes(range=[-52.5 - margins, 417.5 + margins])
+    fig.update_xaxes(range=[COURT_LEFT - margins, COURT_RIGHT + margins])
+    fig.update_yaxes(range=[COURT_BOTTOM - margins, COURT_TOP + margins])
 
     threept_break_y = 89.47765084
     three_line_col = "#777777"
