@@ -17,43 +17,27 @@ from nba_api.stats.endpoints import playergamelog, commonallplayers, playercaree
 
 from flask_caching import Cache
 
+# TODO
+# 1. Add selecitions for shot zone basic and area
+# 2. Add fg% to pie chart
+# 3. hexagonify shot chart
+# 4. add fg% to shot accuracy chart
+# 5. associate mouse selected data in distance with other plots if possible
 
 # external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 
 app = dash.Dash(__name__, meta_tags=[{"name": "viewport", "content": "width=device-width"}])
 
 cache = Cache(app.server, config={
-    'CACHE_TYPE': 'filesystem',
-    'CACHE_DIR': 'cache-directory'
+    'CACHE_TYPE': 'simple'
 })
 
 TIMEOUT = 60
-# colors = {
-#     'background': '#111111',
-#     'text': '#7FDBFF'
-# }
 
-# assume you have a "long-form" data frame
-# see https://plotly.com/python/px-arguments/ for more options
-# df = pd.DataFrame({
-#     "Fruit": ["Apples", "Oranges", "Bananas", "Apples", "Oranges", "Bananas"],
-#     "Amount": [4, 1, 2, 2, 4, 5],
-#     "City": ["SF", "SF", "SF", "Montreal", "Montreal", "Montreal"]
-# })
-
-# fig = px.bar(df, x="Fruit", y="Amount", color="City", barmode="group")
-
-# fig.update_layout(
-#     plot_bgcolor=colors['background'],
-#     paper_bgcolor=colors['background'],
-#     font_color=colors['text']
-# )
-
-all_players = commonallplayers.CommonAllPlayers().get_data_frames()[0]
+# all_players = commonallplayers.CommonAllPlayers().get_data_frames()[0]
 active_players = all_players[all_players.TO_YEAR == all_players.TO_YEAR.max()]
 cur_year = datetime.today().year
 
-print(type(active_players.FROM_YEAR.min()))
 app.layout = html.Div([
     html.Div(id="output-clientside"),
     html.H1(
@@ -94,11 +78,6 @@ app.layout = html.Div([
                         step = 1,
                         marks={i: str(i) for i in range(2003, cur_year+1) 
                                 if (i%5==0 and i-2003>=2 and cur_year-i>=2) or i==2003 or i==cur_year},
-                        #     2003: '2003',
-                        #     2010: '2010',
-                        #     2015: '2015',
-                        #     cur_year: str(cur_year),
-                        # },
                         className="dcc_control",
                     ),
                     html.P("Filter by quarters:", className="control_label"),
@@ -135,13 +114,6 @@ app.layout = html.Div([
                 ],
                 className = "pretty_container four columns"
             ),
- 
-            # html.Div(                
-            #     [html.P("No. of Wellsdaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")],
-            #     id="wells",
-            #     className="pretty_container eight columns",
-            # ),
-
             
             html.Div(
                 [dcc.Graph(id='graph-shot-hist')],
@@ -159,14 +131,8 @@ app.layout = html.Div([
         [
             html.Div(
                 [dcc.Graph(id='graph-shot-pie')],
-                # id="right-column",
                 className='pretty_container twelve columns',
             ),
-            # html.Div(
-            #     [dcc.Graph(id='graph-shot-pie')],
-            #     # id="right-column",
-            #     className='pretty_container six columns',
-            # ),
         ],
         className="row flex-display",
     ), 
@@ -175,12 +141,10 @@ app.layout = html.Div([
         [
             html.Div(
                 [dcc.Graph(id='graph-fga')],
-                # id="right-column",
                 className='pretty_container six columns',
             ),
             html.Div(
                 [dcc.Graph(id='graph-fgp')],
-                # id="right-column",
                 className='pretty_container six columns',
             ),
         ],
@@ -238,7 +202,6 @@ def update_gamelog_figure(player_id=None, quarter='0', time=12, year=[2003, cur_
         shot = shot[shot['PERIOD']>=quarter]
         quater_name = 'overtime'
 
-    print(time)
     if time==12:
         pass
     else:
@@ -251,8 +214,8 @@ def update_gamelog_figure(player_id=None, quarter='0', time=12, year=[2003, cur_
 
     if player_id:
         src = f'https://cdn.nba.com/headshots/nba/latest/1040x760/{player_id}.png'
-        print(player_id)
         player_name = active_players.loc[active_players.PERSON_ID==int(player_id), 'DISPLAY_FIRST_LAST'].values[0]
+        print(player_name, player_id)
         fig.add_trace(go.Histogram(
             x=shot.loc[shot['SHOT_ATTEMPTED_FLAG']==1, 'SHOT_DISTANCE'],
             # customdata = df[['MATCHUP','Win/Lose','stat','avg']],
@@ -299,15 +262,15 @@ def update_gamelog_figure(player_id=None, quarter='0', time=12, year=[2003, cur_
         fig3.update_traces(
             hoverinfo='label+percent', 
             textinfo='none',
-            hole=.3
+            hole=.4
             )
         
         fig3.update_layout(
             height=600,
             title="Shot type distribution",
             # Add annotations in the center of the donut pies.
-            annotations=[dict(text='FGM', x=0.21, y=0.5, font_size=20, showarrow=False),
-                        dict(text='FGA', x=0.79, y=0.5, font_size=20, showarrow=False)])
+            annotations=[dict(text='FG Made', x=0.195, y=0.5, font_size=20, showarrow=False),
+                        dict(text='FG Attempted', x=0.825, y=0.5, font_size=20, showarrow=False)])
         # fig3.update(layout_showlegend=False)
     # fig.update_traces(
     #     mode="lines+markers",
@@ -328,7 +291,6 @@ def update_gamelog_figure(player_id=None, quarter='0', time=12, year=[2003, cur_
         paper_bgcolor="#F9F9F9",
     )
     
-    # print(shot.SHOT_MADE_FLAG.value_counts())
     fig1.add_trace(go.Scatter(
         x=shot['LOC_X'], 
         y=shot['LOC_Y'], 
@@ -431,13 +393,11 @@ def update_gamelog_figure(player_id=None, quarter='0', time=12, year=[2003, cur_
         'yanchor': 'top'}
     )
 
-    # src = f'https://cdn.nba.com/headshots/nba/latest/1040x760/{player_id}.png'
-
     return fig, fig1, fig2, src, fig3
-    # , cs.to_dict('records'), src
 
 @cache.memoize(timeout=TIMEOUT)
 def shot_detail(player_id):
+    print('cache is not used!')
     if player_id:
         shot = shotchartdetail.ShotChartDetail(
             team_id='0', player_id=player_id, context_measure_simple='FGA'
@@ -450,7 +410,6 @@ def shot_detail(player_id):
 
         shot['min_left'] = shot['SECONDS_REMAINING']/60 + shot['MINUTES_REMAINING']
         shot['year'] = shot['GAME_DATE'].map(lambda x: int(x[:4]))
-        print(shot.columns)
     else:
         shot = pd.DataFrame.from_dict(
             {
@@ -467,8 +426,6 @@ def shot_detail(player_id):
                 'ACTION_TYPE': ['', ''],
             }
         )
-    
-    
 
     return shot 
 
