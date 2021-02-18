@@ -4,6 +4,7 @@ import dash_html_components as html
 from dash.dependencies import Input, Output
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 import requests
 from bs4 import BeautifulSoup
@@ -56,7 +57,7 @@ print(type(active_players.FROM_YEAR.min()))
 app.layout = html.Div([
     html.Div(id="output-clientside"),
     html.H1(
-        children='NBA Player Tracker',
+        children='Active NBA Player Shot Selection',
         style={
             'textAlign': 'center',
         }
@@ -134,16 +135,42 @@ app.layout = html.Div([
                 ],
                 className = "pretty_container four columns"
             ),
+ 
+            # html.Div(                
+            #     [html.P("No. of Wellsdaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")],
+            #     id="wells",
+            #     className="pretty_container eight columns",
+            # ),
 
+            
             html.Div(
-                [dcc.Graph(id='graph-gamelog')],
+                [dcc.Graph(id='graph-shot-hist')],
                 # id="right-column",
                 className='pretty_container eight columns',
             ),
+
+            
+
         ],
         className="row flex-display",
     ),
     
+    html.Div(
+        [
+            html.Div(
+                [dcc.Graph(id='graph-shot-pie')],
+                # id="right-column",
+                className='pretty_container twelve columns',
+            ),
+            # html.Div(
+            #     [dcc.Graph(id='graph-shot-pie')],
+            #     # id="right-column",
+            #     className='pretty_container six columns',
+            # ),
+        ],
+        className="row flex-display",
+    ), 
+
     html.Div(
         [
             html.Div(
@@ -168,11 +195,12 @@ style={"display": "flex", "flex-direction": "column"},
 
 @app.callback(
     [
-        Output('graph-gamelog', 'figure'), 
+        Output('graph-shot-hist', 'figure'), 
         Output('graph-fga', 'figure'), 
         Output('graph-fgp', 'figure'), 
         # Output('career-stat', 'data'), 
         Output('player-img', 'src'),
+        Output('graph-shot-pie', 'figure'), 
     ],   
     [
         Input('name-search', 'value'),
@@ -190,6 +218,7 @@ def update_gamelog_figure(player_id=None, quarter='0', time=12, year=[2003, cur_
     draw_plotly_court(fig1)
     fig2 = go.Figure()
     draw_plotly_court(fig2)
+    fig3 = go.Figure()
 
     shot = shot_detail(player_id)
 
@@ -231,7 +260,7 @@ def update_gamelog_figure(player_id=None, quarter='0', time=12, year=[2003, cur_
                       start=0,
                       end=100,
                       size=1),
-            name='Shot Attempted',
+            name='Attempted Shot',
             ))
         fig.add_trace(go.Histogram(
             x=shot.loc[shot['SHOT_MADE_FLAG']==1, 'SHOT_DISTANCE'],
@@ -240,7 +269,7 @@ def update_gamelog_figure(player_id=None, quarter='0', time=12, year=[2003, cur_
                       end=100,
                       size=1),
             # customdata = df[['MATCHUP','Win/Lose','stat','avg']], 
-            name='Shot Made',
+            name='Made Shot',
             ))
         
         # Overlay both histograms
@@ -250,6 +279,36 @@ def update_gamelog_figure(player_id=None, quarter='0', time=12, year=[2003, cur_
             )
         # Reduce opacity to see both histograms
         fig.update_traces(opacity=0.6)
+
+        shot_area = shot.groupby('ACTION_TYPE', as_index=False).sum(['SHOT_ATTEMPTED_FLAG', 'SHOT_MADE_FLAG'])
+        # fig3 = px.pie(shot_area, values='SHOT_ATTEMPTED_FLAG', names='ACTION_TYPE')
+        fig3 = make_subplots(rows=1, cols=2, specs=[[{'type':'domain'}, {'type':'domain'}]])
+        fig3.add_trace(go.Pie(
+                labels=shot_area['ACTION_TYPE'],
+                values=shot_area['SHOT_MADE_FLAG'],
+                name='Made Shot'),
+                1, 1
+            )
+        fig3.add_trace(go.Pie(
+                labels=shot_area['ACTION_TYPE'],
+                values=shot_area['SHOT_ATTEMPTED_FLAG'],
+                name='SHOT ATTEMPT'),
+                1, 2
+            )
+
+        fig3.update_traces(
+            hoverinfo='label+percent', 
+            textinfo='none',
+            hole=.3
+            )
+        
+        fig3.update_layout(
+            height=600,
+            title="Shot type distribution",
+            # Add annotations in the center of the donut pies.
+            annotations=[dict(text='FGM', x=0.21, y=0.5, font_size=20, showarrow=False),
+                        dict(text='FGA', x=0.79, y=0.5, font_size=20, showarrow=False)])
+        # fig3.update(layout_showlegend=False)
     # fig.update_traces(
     #     mode="lines+markers",
     #     marker = dict(
@@ -263,7 +322,11 @@ def update_gamelog_figure(player_id=None, quarter='0', time=12, year=[2003, cur_
         paper_bgcolor="#F9F9F9",
     )
 
-    
+    fig3.update_layout(
+        hovermode="closest",
+        plot_bgcolor="#F9F9F9",
+        paper_bgcolor="#F9F9F9",
+    )
     
     # print(shot.SHOT_MADE_FLAG.value_counts())
     fig1.add_trace(go.Scatter(
@@ -345,17 +408,32 @@ def update_gamelog_figure(player_id=None, quarter='0', time=12, year=[2003, cur_
                 color='#4d4d4d'
             )
         ),
-            
             cmin=marker_cmin, cmax=marker_cmax,
         line=dict(width=1, color='#333333'),
         ),
         name = 'Shot'
     ))
 
+    fig1.update_layout(
+        title={
+        'text': "Shot location chart",
+        'y':0.98,
+        'x':0.5,
+        'xanchor': 'center',
+        'yanchor': 'top'}
+    )
+    fig2.update_layout(
+        title={
+        'text': "Shot accuracy location chart",
+        'y':.98,
+        'x':0.5,
+        'xanchor': 'center',
+        'yanchor': 'top'}
+    )
 
     # src = f'https://cdn.nba.com/headshots/nba/latest/1040x760/{player_id}.png'
 
-    return fig, fig1, fig2, src
+    return fig, fig1, fig2, src, fig3
     # , cs.to_dict('records'), src
 
 @cache.memoize(timeout=TIMEOUT)
@@ -372,6 +450,7 @@ def shot_detail(player_id):
 
         shot['min_left'] = shot['SECONDS_REMAINING']/60 + shot['MINUTES_REMAINING']
         shot['year'] = shot['GAME_DATE'].map(lambda x: int(x[:4]))
+        print(shot.columns)
     else:
         shot = pd.DataFrame.from_dict(
             {
@@ -384,6 +463,8 @@ def shot_detail(player_id):
                 'y': [0, 0],
                 'min_left': [0, 0],
                 'year': [0, 0],
+                'SHOT_ZONE_AREA': ['', ''],
+                'ACTION_TYPE': ['', ''],
             }
         )
     
