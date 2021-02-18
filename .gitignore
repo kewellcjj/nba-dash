@@ -1,2 +1,5 @@
 *.ipynb
 *checkpoint*
+__pycache__
+cache-directory
+.vscode
