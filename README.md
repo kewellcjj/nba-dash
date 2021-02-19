@@ -1,6 +1,6 @@
 # NBA active player shot selection dashboard
 
-This Dash app shows active NBA basketball players' shot selections. Results are summarized by shot distance, shot type and shot location and can be filtered by year, period of game and shot zone.
+This Dash app shows active NBA players' shot selections. Results are summarized by shot distance, shot type and shot location and can be filtered by year, period of game and shot zone.
 
 ## Running the app locally
 
@@ -16,5 +16,4 @@ The dashboard template is larged based on [Dash Natural Gas Well Production Exam
 
 ## Screenshots
 
-Some glitches probably due to my graphic card...
 ![animated1](screenshots/animated1.gif)
