@@ -5,7 +5,7 @@ COURT_RIGHT = 250
 COURT_TOP = 417.5
 COURT_BOTTOM = -52.5
 
-def hexagonify(shot, h=10):
+def hexagonify(shot, h=25):
     # h is preferred to divide COURT_RIGHT
     r = 2*h/3**.5
     shot['x'] = (shot['LOC_X'] - COURT_LEFT) // (2*h) * (2*h) + COURT_LEFT
@@ -33,7 +33,7 @@ def hexagonify(shot, h=10):
 
     return shot
 
-def draw_plotly_court(fig, fig_width=800, margins=10):
+def draw_plotly_court(fig, fig_width=800, margins=30):
     # From: https://community.plot.ly/t/arc-shape-with-path/7205/5
     def ellipse_arc(x_center=0.0, y_center=0.0, a=10.5, b=10.5, start_angle=0.0, end_angle=2 * np.pi, N=200, closed=False):
         t = np.linspace(start_angle, end_angle, N)

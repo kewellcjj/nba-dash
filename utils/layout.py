@@ -118,26 +118,31 @@ def app_layout(active_players, cur_year):
             className="row flex-display",
         ),
         
-        html.Div(
-            [
-                html.Div(
-                    [dcc.Graph(id='graph-shot-pie')],
-                    className='pretty_container twelve columns',
-                ),
-            ],
-            className="row flex-display",
-        ), 
+        # html.Div(
+        #     [
+        #         html.Div(
+        #             [dcc.Graph(id='graph-shot-pie')],
+        #             className='pretty_container twelve columns',
+        #         ),
+        #     ],
+        #     className="row flex-display",
+        # ), 
 
         html.Div(
             [
-                html.Div(
-                    [dcc.Graph(id='graph-fga')],
-                    className='pretty_container six columns',
-                ),
+                # html.Div(
+                #     [dcc.Graph(id='graph-fga')],
+                #     className='pretty_container six columns',
+                # ),
                 html.Div(
                     [dcc.Graph(id='graph-fgp')],
                     className='pretty_container six columns',
                 ),
+                html.Div(
+                    [dcc.Graph(id='graph-shot-pie')],
+                    className='pretty_container six columns',
+                ),
+                
             ],
             className="row flex-display",
         ), 
